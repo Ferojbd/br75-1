@@ -13,9 +13,10 @@ const Affiliateroute = require("./routes/Affiliateroute");
 const Masteraffiliateroute = require("./routes/Masteraffiliateroute");
 const mongoose = require("mongoose");
 
-app.use(
-  cors({
-    origin: [
+// Replace your current cors configuration with this:
+app.use(cors({
+  origin: function(origin, callback) {
+    const allowedOrigins = [
       "http://localhost:5173",
       "http://localhost:5174",
       "http://localhost:5175",
@@ -38,24 +39,32 @@ app.use(
       "https://affiliate.bajiman.com",
       "https://bir75.com",
       "https://admin.bir75.com",
-      "https://affiliate.bir75.com",
-      "*",
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-api-key",
-      "x-merchant-id",
-      "x-timestamp",
-      "x-nonce",
-      "x-sign",
-      "Access-Control-Allow-Origin",
-    ],
-    credentials: true,
-    optionsSuccessStatus: 200,
-  })
-);
+      "https://affiliate.bir75.com"
+    ];
+    
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      console.log('Blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-api-key",
+    "x-merchant-id",
+    "x-timestamp",
+    "x-nonce",
+    "x-sign"
+  ],
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
