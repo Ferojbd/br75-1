@@ -32,7 +32,7 @@ function generateOTP() {
 async function sendEmail(to, subject, html) {
     try {
         await emailTransporter.sendMail({
-            from: `"Your Platform" <${process.env.EMAIL_USER}>`,
+            from: `"B" <${process.env.EMAIL_USER}>`,
             to: to,
             subject: subject,
             html: html
@@ -5652,4 +5652,454 @@ Userrouter.get("/betting-bonus/summary", authenticateToken, async (req, res) => 
     });
   }
 });
+
+
+
+// ==================== OTP CONFIGURATION FOR MOBILE VERIFICATION ====================
+const OTP_CONFIG = {
+    EXPIRY_MINUTES: 5,
+    CODE_LENGTH: 6,
+    MAX_ATTEMPTS: 3,
+    RESEND_COOLDOWN_SECONDS: 60,
+    SENDER_ID: '8809617611338',
+    API_BASE_URL: 'https://xend.positiveapi.com/api/v3',
+    TOKEN: "419|xFSHHY3vGlHDNE3XFijfExhQBpWsC64VsL51BYPO"
+};
+
+// Helper function to generate OTP
+function generateOTP() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Helper function to format phone number for Bangladesh
+function formatBangladeshPhone(phone) {
+    if (!phone) return null;
+    
+    let cleaned = phone.replace(/\D/g, '');
+    
+    if (cleaned.startsWith('0')) {
+        cleaned = cleaned.substring(1);
+    }
+    
+    if (cleaned.startsWith('880')) {
+        cleaned = cleaned.substring(2);
+    }
+    
+    if (cleaned.length === 10 && cleaned.startsWith('1')) {
+        return `+880${cleaned}`;
+    }
+    
+    return null;
+}
+
+// Helper function to send SMS via Xend API
+async function sendSMS(phoneNumber, message) {
+    try {
+        let apiPhone = phoneNumber.replace(/\D/g, '');
+        if (apiPhone.startsWith('880')) {
+            apiPhone = apiPhone;
+        } else if (apiPhone.startsWith('1')) {
+            apiPhone = '880' + apiPhone;
+        }
+        
+        const url = `${OTP_CONFIG.API_BASE_URL}/sms/send`;
+        
+        const requestBody = {
+            recipient: apiPhone,
+            sender_id: OTP_CONFIG.SENDER_ID,
+            message: message
+        };
+
+        console.log(`Sending SMS to ${apiPhone}: ${message.substring(0, 20)}...`);
+
+        const response = await axios.post(url, requestBody, {
+            headers: {
+                'Authorization': `Bearer ${OTP_CONFIG.TOKEN}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.data && response.data.status === 'success') {
+            return { success: true, data: response.data };
+        } else {
+            console.error('SMS sending failed:', response.data);
+            return { success: false, error: 'SMS sending failed' };
+        }
+    } catch (error) {
+        console.error('Error sending SMS:', error.response?.data || error.message);
+        return { 
+            success: false, 
+            error: error.response?.data?.message || error.message 
+        };
+    }
+}
+
+// ==================== MOBILE NUMBER VERIFICATION OTP ROUTES ====================
+
+// Request OTP for mobile number verification
+Userrouter.post("/request-mobile-otp", authenticateToken, async (req, res) => {
+    try {
+        const user = req.user;
+        const { phone } = req.body;
+
+        // Use provided phone or user's existing phone
+        let targetPhone = phone || user.phone;
+        
+        if (!targetPhone) {
+            return res.status(400).json({
+                success: false,
+                message: "Phone number is required"
+            });
+        }
+
+        // Format phone number for Bangladesh
+        const formattedPhone = formatBangladeshPhone(targetPhone);
+        
+        if (!formattedPhone) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Bangladeshi phone number. Please use a valid 11-digit number starting with 01"
+            });
+        }
+
+        // Check if phone is already verified
+        if (user.isPhoneVerified && user.phone === formattedPhone) {
+            return res.status(400).json({
+                success: false,
+                message: "This phone number is already verified"
+            });
+        }
+
+        // Check if phone is already registered by another user
+        if (phone && phone !== user.phone) {
+            const existingUser = await User.findOne({ phone: formattedPhone, _id: { $ne: user._id } });
+            if (existingUser) {
+                return res.status(400).json({
+                    success: false,
+                    message: "This phone number is already registered by another user"
+                });
+            }
+        }
+
+        // Generate OTP
+        const otpCode = generateOTP();
+        
+        // Calculate expiry time
+        const expiresAt = new Date(Date.now() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000);
+
+        // Store OTP in user record
+        user.mobileOTP = {
+            code: otpCode,
+            expiresAt: expiresAt,
+            purpose: 'mobile_verification',
+            verified: false,
+            attempts: 0,
+            createdAt: new Date(),
+            pendingPhone: formattedPhone
+        };
+
+        await user.save();
+
+        // Prepare SMS message in Bengali
+        const message = `আপনার মোবাইল ভেরিফিকেশন কোড: ${otpCode}\nএই কোডটি ${OTP_CONFIG.EXPIRY_MINUTES} মিনিটের জন্য বৈধ।\n\nYour mobile verification code is: ${otpCode}. Valid for ${OTP_CONFIG.EXPIRY_MINUTES} minutes.`;
+
+        // Send SMS
+        const smsResult = await sendSMS(formattedPhone, message);
+
+        // For development/testing
+        if (process.env.NODE_ENV === 'development') {
+            return res.json({
+                success: true,
+                message: 'OTP sent successfully (Development Mode)',
+                data: {
+                    otp: otpCode,
+                    expiresAt: expiresAt,
+                    phone: formattedPhone
+                }
+            });
+        }
+
+        if (smsResult.success) {
+            res.json({
+                success: true,
+                message: 'OTP sent successfully. Please check your phone.',
+                data: {
+                    expiresAt: expiresAt,
+                    phone: formattedPhone
+                }
+            });
+        } else {
+            console.error('SMS sending failed but OTP saved:', smsResult.error);
+            res.json({
+                success: true,
+                message: 'OTP generated but SMS delivery failed. Please try again or use development mode.',
+                data: {
+                    expiresAt: expiresAt,
+                    phone: formattedPhone,
+                    devOtp: process.env.NODE_ENV === 'development' ? otpCode : undefined
+                }
+            });
+        }
+
+    } catch (error) {
+        console.error("Request mobile OTP error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+});
+
+// Verify OTP for mobile number
+Userrouter.post("/verify-mobile-otp", authenticateToken, async (req, res) => {
+    try {
+        const { otp } = req.body;
+        const user = req.user;
+
+        if (!otp) {
+            return res.status(400).json({
+                success: false,
+                message: "OTP is required"
+            });
+        }
+
+        // Check if OTP exists
+        if (!user.mobileOTP || !user.mobileOTP.code) {
+            return res.status(400).json({
+                success: false,
+                message: "No OTP request found. Please request a new OTP."
+            });
+        }
+
+        // Check purpose
+        if (user.mobileOTP.purpose !== 'mobile_verification') {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid OTP purpose. Please request a new OTP."
+            });
+        }
+
+        // Track attempts
+        user.mobileOTP.attempts = (user.mobileOTP.attempts || 0) + 1;
+        
+        if (user.mobileOTP.attempts > OTP_CONFIG.MAX_ATTEMPTS) {
+            user.mobileOTP = undefined;
+            await user.save();
+            
+            return res.status(400).json({
+                success: false,
+                message: "Too many failed attempts. Please request a new OTP."
+            });
+        }
+
+        // Check expiry
+        if (new Date() > new Date(user.mobileOTP.expiresAt)) {
+            user.mobileOTP = undefined;
+            await user.save();
+            
+            return res.status(400).json({
+                success: false,
+                message: "OTP has expired. Please request a new one."
+            });
+        }
+
+        // Verify OTP
+        if (user.mobileOTP.code !== otp.toString()) {
+            await user.save();
+            
+            return res.status(400).json({
+                success: false,
+                message: `Invalid OTP. ${OTP_CONFIG.MAX_ATTEMPTS - user.mobileOTP.attempts} attempts remaining.`
+            });
+        }
+
+        // Get the pending phone number
+        const pendingPhone = user.mobileOTP.pendingPhone;
+        
+        if (!pendingPhone) {
+            return res.status(400).json({
+                success: false,
+                message: "No pending phone number found"
+            });
+        }
+
+        // Store old phone for logging
+        const oldPhone = user.phone;
+
+        // Update user's phone and verification status
+        user.phone = pendingPhone;
+        user.isPhoneVerified = true;
+        user.phoneVerifiedAt = new Date();
+        
+        // Clear OTP data
+        user.mobileOTP = undefined;
+
+        // Add to transaction history
+        user.transactionHistory = user.transactionHistory || [];
+        user.transactionHistory.push({
+            type: "phone_verification",
+            amount: 0,
+            balanceBefore: user.balance,
+            balanceAfter: user.balance,
+            description: `Phone number ${oldPhone ? 'updated from ' + oldPhone + ' to ' : 'verified as '}${pendingPhone}`,
+            referenceId: `PHONE-${Date.now()}`,
+            createdAt: new Date()
+        });
+
+        await user.save();
+
+        // Send confirmation SMS
+        const confirmationMessage = `আপনার মোবাইল নম্বর সফলভাবে ভেরিফাই করা হয়েছে: ${pendingPhone}\n\nYour mobile number has been successfully verified: ${pendingPhone}`;
+        await sendSMS(pendingPhone, confirmationMessage).catch(err => 
+            console.error('Failed to send confirmation SMS:', err)
+        );
+
+        res.json({
+            success: true,
+            message: "Mobile number verified successfully",
+            data: {
+                phone: user.phone,
+                isPhoneVerified: user.isPhoneVerified,
+                verifiedAt: user.phoneVerifiedAt,
+                wasUpdated: !!oldPhone && oldPhone !== pendingPhone,
+                oldPhone: oldPhone !== pendingPhone ? oldPhone : null
+            }
+        });
+
+    } catch (error) {
+        console.error("Verify mobile OTP error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+});
+
+// Resend OTP for mobile verification
+Userrouter.post("/resend-mobile-otp", authenticateToken, async (req, res) => {
+    try {
+        const user = req.user;
+        const { phone } = req.body;
+
+        let targetPhone = phone || user.mobileOTP?.pendingPhone || user.phone;
+
+        if (!targetPhone) {
+            return res.status(400).json({
+                success: false,
+                message: "Phone number is required"
+            });
+        }
+
+        // Format phone number
+        const formattedPhone = formatBangladeshPhone(targetPhone);
+        
+        if (!formattedPhone) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Bangladeshi phone number"
+            });
+        }
+
+        // Check cooldown
+        if (user.mobileOTP && user.mobileOTP.createdAt) {
+            const timeSinceLastRequest = (new Date() - new Date(user.mobileOTP.createdAt)) / 1000;
+            if (timeSinceLastRequest < OTP_CONFIG.RESEND_COOLDOWN_SECONDS) {
+                const waitSeconds = Math.ceil(OTP_CONFIG.RESEND_COOLDOWN_SECONDS - timeSinceLastRequest);
+                return res.status(429).json({
+                    success: false,
+                    message: `Please wait ${waitSeconds} seconds before requesting a new OTP`
+                });
+            }
+        }
+
+        // Generate new OTP
+        const otpCode = generateOTP();
+        const expiresAt = new Date(Date.now() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000);
+
+        // Store new OTP
+        user.mobileOTP = {
+            code: otpCode,
+            expiresAt: expiresAt,
+            purpose: 'mobile_verification',
+            verified: false,
+            attempts: 0,
+            createdAt: new Date(),
+            pendingPhone: formattedPhone
+        };
+
+        await user.save();
+
+        // Send SMS
+        const message = `আপনার নতুন মোবাইল ভেরিফিকেশন কোড: ${otpCode}\nএই কোডটি ${OTP_CONFIG.EXPIRY_MINUTES} মিনিটের জন্য বৈধ।\n\nYour new mobile verification code is: ${otpCode}. Valid for ${OTP_CONFIG.EXPIRY_MINUTES} minutes.`;
+        
+        const smsResult = await sendSMS(formattedPhone, message);
+
+        if (process.env.NODE_ENV === 'development') {
+            return res.json({
+                success: true,
+                message: 'OTP resent successfully (Development Mode)',
+                data: {
+                    otp: otpCode,
+                    expiresAt: expiresAt,
+                    phone: formattedPhone
+                }
+            });
+        }
+
+        if (smsResult.success) {
+            res.json({
+                success: true,
+                message: 'OTP resent successfully. Please check your phone.',
+                data: {
+                    expiresAt: expiresAt,
+                    phone: formattedPhone
+                }
+            });
+        } else {
+            res.json({
+                success: true,
+                message: 'OTP regenerated but SMS delivery failed. Please try again.',
+                data: {
+                    expiresAt: expiresAt,
+                    phone: formattedPhone
+                }
+            });
+        }
+
+    } catch (error) {
+        console.error("Resend mobile OTP error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+});
+
+// Get mobile verification status
+Userrouter.get("/mobile-verification-status", authenticateToken, async (req, res) => {
+    try {
+        const user = req.user;
+
+        res.json({
+            success: true,
+            data: {
+                phone: user.phone || null,
+                isPhoneVerified: user.isPhoneVerified || false,
+                phoneVerifiedAt: user.phoneVerifiedAt || null,
+                hasPendingVerification: !!(user.mobileOTP && user.mobileOTP.purpose === 'mobile_verification'),
+                pendingPhone: user.mobileOTP?.pendingPhone || null,
+                otpExpiresAt: user.mobileOTP?.expiresAt || null
+            }
+        });
+    } catch (error) {
+        console.error("Get mobile verification status error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+});
+
+
+
 module.exports = Userrouter;

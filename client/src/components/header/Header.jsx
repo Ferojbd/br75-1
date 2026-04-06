@@ -48,7 +48,7 @@ import { LanguageContext } from "../../context/LanguageContext";
 import telegram_icon from "../../assets/social_icon/telegram.png"
 import whatsapp_icon from "../../assets/social_icon/whatsapp.png"
 
-const APK_FILE = "https://bajiman.com/Bajiman.apk";
+const APK_FILE = "https://bir75.com/Bajiman.apk";
 
 // ── Flag URLs ─────────────────────────────────────────────────────────────────
 const US_FLAG = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Flag_of_the_United_States.svg/1280px-Flag_of_the_United_States.svg.png";
@@ -751,7 +751,7 @@ export const Header = ({ sidebarOpen, setSidebarOpen }) => {
       title: t.affiliate,
       icon: <FaHandshake className="w-5 h-5 min-w-[20px]" />,
       subItems: [],
-      onClick: () => { window.location.href = "https://m-affiliate.bajiman.com" },
+      onClick: () => { window.location.href = "https://m-affiliate.bir75.com" },
     },
     {
       title: t.brandAmbassadors,

@@ -472,7 +472,7 @@ const HomeContent = () => {
   }, []);
 
   return (
-    <div className="h-screen overflow-hidden font-poppins bg-[#1a1a1a] text-white">
+    <div className="h-screen overflow-hidden font-poppins bg-[#1a1a1a] text-white" >
       {/* Loading Overlay - Only show for initial load */}
 {isLoading && (
  <div className="fixed top-0 left-0 w-full h-full bg-[#0a0a0a] flex justify-center items-center z-[10000000]">

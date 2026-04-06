@@ -183,11 +183,8 @@ const UserSchema = new Schema({
     email: {
         type: String,
         unique: true,
-        sparse: true, // Allows multiple null values but ensures unique if present
         lowercase: true,
-        default:"",
         trim: true,
-        match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please fill a valid email address']
     },
     fullName: {
         type: String,
@@ -440,6 +437,19 @@ const UserSchema = new Schema({
         purpose: String,
         verified: { type: Boolean, default: false }
     },
+    mobileOTP: {
+    code: String,
+    expiresAt: Date,
+    purpose: {
+        type: String,
+        enum: ['mobile_verification', 'mobile_update', 'login'],
+        default: 'mobile_verification'
+    },
+    verified: { type: Boolean, default: false },
+    attempts: { type: Number, default: 0 },
+    createdAt: Date,
+    pendingPhone: String
+},
     resetPasswordToken: String,
     resetPasswordExpires: Date,
     twoFactorEnabled: {

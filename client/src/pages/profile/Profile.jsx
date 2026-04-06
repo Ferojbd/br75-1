@@ -33,7 +33,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { LanguageContext } from "../../context/LanguageContext";
-import toast from "react-hot-toast";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const Profile = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -77,6 +78,16 @@ const Profile = () => {
     showForm: false
   });
   
+  // Mobile verification state
+  const [mobileVerification, setMobileVerification] = useState({
+    step: "request", // request, verify, success
+    otp: "",
+    pendingPhone: "",
+    expiresAt: null,
+    isLoading: false,
+    showForm: false
+  });
+  
   const [verificationStatus, setVerificationStatus] = useState({
     email: "not_started",
     phone: "not_started",
@@ -101,7 +112,7 @@ const Profile = () => {
   const [addressDocuments, setAddressDocuments] = useState([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
-  const [addressVerificationStep, setAddressVerificationStep] = useState("form"); // form, document, review, submitted
+  const [addressVerificationStep, setAddressVerificationStep] = useState("form");
   
   const navigate = useNavigate();
 
@@ -111,12 +122,25 @@ const Profile = () => {
 
   useEffect(() => {
     if (userData) {
+      // Format phone number: remove any leading +880 or 880 if present, just keep the raw number
+      let rawPhone = userData.phone || '';
+      // Remove +880 prefix if exists
+      if (rawPhone.startsWith('+880')) {
+        rawPhone = rawPhone.substring(4);
+      }
+      // Remove 880 prefix if exists
+      else if (rawPhone.startsWith('880')) {
+        rawPhone = rawPhone.substring(3);
+      }
+      // Remove any non-digit characters
+      rawPhone = rawPhone.replace(/\D/g, '');
+      
       setPersonalInfoForm({
         fullName: userData.fullName || '',
         dateOfBirth: userData.dateOfBirth ? userData.dateOfBirth.split('T')[0] : '',
-        phone: userData.phone || ''
+        phone: rawPhone
       });
-      
+      console.log("User data loaded:", userData);
       // Check if fields have been updated before
       setIsFullNameUpdated(!!userData.fullName);
       setIsDOBUpdated(!!userData.dateOfBirth);
@@ -242,7 +266,6 @@ const Profile = () => {
     }
   };
 
-  // Update full name (can only be done once)
   const handleUpdateFullName = async () => {
     if (isFullNameUpdated) {
       toast.error(t?.fullNameAlreadyUpdated || "Full name can only be updated once. Contact support for changes.");
@@ -280,7 +303,6 @@ const Profile = () => {
     }
   };
 
-  // Update date of birth (can only be done once)
   const handleUpdateDOB = async () => {
     if (isDOBUpdated) {
       toast.error(t?.dobAlreadyUpdated || "Date of birth can only be updated once. Contact support for changes.");
@@ -327,8 +349,150 @@ const Profile = () => {
     });
   };
 
+  // ==================== MOBILE VERIFICATION FUNCTIONS ====================
+  
+  // Request OTP for mobile verification
+  const handleSendMobileOTP = async () => {
+    if (!personalInfoForm.phone) {
+      toast.error(t?.addPhoneFirst || "Please enter your phone number first.");
+      return;
+    }
+
+    const phoneRegex = /^1[0-9]{9}$/;
+    if (!phoneRegex.test(personalInfoForm.phone)) {
+      toast.error(t?.invalidPhone || "Please enter a valid Bangladeshi phone number (format: 01XXXXXXXXX)");
+      return;
+    }
+
+    setMobileVerification(prev => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/user/request-mobile-otp`, {
+        phone: personalInfoForm.phone
+      });
+
+      if (response.data.success) {
+        setMobileVerification({
+          step: "verify",
+          otp: "",
+          pendingPhone: response.data.data.phone,
+          expiresAt: response.data.data.expiresAt,
+          isLoading: false,
+          showForm: true  // This is set to true
+        });
+        
+        toast.success(t?.otpSent || "OTP sent successfully! Please check your phone.");
+        
+        // Show development OTP if available
+        if (response.data.data.otp) {
+          toast.success(`Development OTP: ${response.data.data.otp}`, {
+            autoClose: 10000,
+          });
+        }
+      } else {
+        toast.error(response.data.message || (t?.failedToSendOTP || "Failed to send OTP"));
+        setMobileVerification(prev => ({ ...prev, isLoading: false }));
+      }
+    } catch (error) {
+      console.error('Error sending OTP:', error);
+      toast.error(error.response?.data?.message || (t?.failedToSendOTP || "Failed to send OTP"));
+      setMobileVerification(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Verify OTP for mobile
+  const handleVerifyMobileOTP = async () => {
+    if (!mobileVerification.otp || mobileVerification.otp.length !== 6) {
+      toast.error(t?.pleaseEnterValidOTP || "Please enter a valid 6-digit OTP");
+      return;
+    }
+
+    setMobileVerification(prev => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/user/verify-mobile-otp`, {
+        otp: mobileVerification.otp
+      });
+
+      if (response.data.success) {
+        setMobileVerification({
+          step: "success",
+          otp: "",
+          pendingPhone: null,
+          expiresAt: null,
+          isLoading: false,
+          showForm: false
+        });
+        
+        toast.success(t?.phoneVerifiedSuccessfully || "Phone number verified successfully!");
+        
+        // Update user data
+        setUserData(prev => ({ 
+          ...prev, 
+          phone: response.data.data.phone,
+          isPhoneVerified: true 
+        }));
+        setVerificationStatus(prev => ({ ...prev, phone: "verified" }));
+        setPersonalInfoForm(prev => ({ ...prev, phone: response.data.data.phone }));
+      } else {
+        toast.error(response.data.message || (t?.failedToVerifyOTP || "Failed to verify OTP"));
+        setMobileVerification(prev => ({ ...prev, isLoading: false }));
+      }
+    } catch (error) {
+      console.error('Error verifying OTP:', error);
+      toast.error(error.response?.data?.message || (t?.failedToVerifyOTP || "Failed to verify OTP"));
+      setMobileVerification(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Resend OTP
+  const handleResendMobileOTP = async () => {
+    setMobileVerification(prev => ({ ...prev, isLoading: true }));
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/user/resend-mobile-otp`, {
+        phone: personalInfoForm.phone
+      });
+
+      if (response.data.success) {
+        setMobileVerification(prev => ({
+          ...prev,
+          expiresAt: response.data.data.expiresAt,
+          isLoading: false,
+          otp: ""
+        }));
+        
+        toast.success(t?.otpResent || "OTP resent successfully!");
+        
+        if (response.data.data.otp) {
+          toast.success(`Development OTP: ${response.data.data.otp}`, {
+            autoClose: 10000,
+          });
+        }
+      } else {
+        toast.error(response.data.message || (t?.failedToResendOTP || "Failed to resend OTP"));
+        setMobileVerification(prev => ({ ...prev, isLoading: false }));
+      }
+    } catch (error) {
+      console.error('Error resending OTP:', error);
+      toast.error(error.response?.data?.message || (t?.failedToResendOTP || "Failed to resend OTP"));
+      setMobileVerification(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Cancel mobile verification
+  const handleCancelMobileVerification = () => {
+    setMobileVerification({
+      step: "request",
+      otp: "",
+      pendingPhone: "",
+      expiresAt: null,
+      isLoading: false,
+      showForm: false
+    });
+  };
+
   const handleSendEmailOTP = async () => {
-    // Check if email already updated
     if (isEmailUpdated && userData?.email) {
       toast.error(t?.emailAlreadyUpdated || "Email can only be set once. Contact support for changes.");
       return;
@@ -490,7 +654,6 @@ const Profile = () => {
     }
   };
 
-  // Address Verification Handlers
   const handleAddressFormChange = (e) => {
     const { name, value } = e.target;
     setAddressForm(prev => ({
@@ -502,14 +665,12 @@ const Profile = () => {
   const handleDocumentFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Validate file type
       const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
       if (!allowedTypes.includes(file.type)) {
         toast.error('Please upload a valid image or PDF file');
         return;
       }
       
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast.error('File size must be less than 5MB');
         return;
@@ -520,7 +681,6 @@ const Profile = () => {
         documentFile: file
       }));
       
-      // Preview for images
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -534,7 +694,6 @@ const Profile = () => {
   };
 
   const handleAddressVerificationSubmit = async () => {
-    // Validate address form
     if (!addressForm.streetAddress || !addressForm.city || !addressForm.postalCode) {
       toast.error('Please fill in all required address fields');
       return;
@@ -548,7 +707,6 @@ const Profile = () => {
     setUploadingDocument(true);
     
     try {
-      // Upload document first
       const formData = new FormData();
       formData.append('document', addressForm.documentFile);
       formData.append('documentType', addressForm.documentType);
@@ -644,28 +802,20 @@ const Profile = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="h-screen overflow-hidden font-poppins bg-[#0f0f0f] text-white">
-        <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
-        <div className="flex h-[calc(100vh-56px)]">
-          <Sidebar sidebarOpen={sidebarOpen} />
-          <div className="w-full flex items-center justify-center">
-            <div className='w-full p-[20px] flex justify-center items-center'>
-              <div className="relative w-24 h-24 flex justify-center items-center">
-                <div className="absolute w-full h-full rounded-full border-4 border-transparent border-t-green-500 border-r-green-500 animate-spin"></div>
-                <div className="w-20 h-20 rounded-full flex justify-center items-center font-bold text-lg">
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-screen overflow-hidden font-poppins bg-[#0f0f0f] text-white">
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+      />
       <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
       <div className="flex h-[calc(100vh-56px)]">
@@ -793,7 +943,7 @@ const Profile = () => {
                               <FiXCircle className="text-sm" /> {t?.cancel || "Cancel"}
                             </button>
                           </div>
-                          <p className="text-xs text-yellow-500">{t?.updateOnceWarning || "⚠️ You can only update this once. Please ensure the name is correct."}</p>
+                          <p className="text-xs text-yellow-500">{t?.updateOnceWarning || "You can only update this once. Please ensure the name is correct."}</p>
                         </div>
                       ) : (
                         <div className="flex items-center justify-between">
@@ -850,7 +1000,7 @@ const Profile = () => {
                               <FiXCircle className="text-sm" /> {t?.cancel || "Cancel"}
                             </button>
                           </div>
-                          <p className="text-xs text-yellow-500">{t?.updateOnceWarning || "⚠️ You can only update this once. Please ensure the date is correct."}</p>
+                          <p className="text-xs text-yellow-500">{t?.updateOnceWarning || " You can only update this once. Please ensure the date is correct."}</p>
                         </div>
                       ) : (
                         <div className="flex items-center justify-between">
@@ -860,27 +1010,142 @@ const Profile = () => {
                       )}
                     </div>
 
-                    {/* Phone - Permanently Locked */}
+                    {/* Phone with OTP Verification - Updated Section (Fixed double +880 issue) */}
                     <div className="py-4 border-b border-gray-700">
                       <div className="flex items-center gap-2 mb-2">
                         <FiPhone className="text-gray-400" />
                         <p className="text-sm text-gray-400">{t?.phone || "Phone"}</p>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <p className="text-white flex items-center gap-2">
-                          {userData?.phone || (t?.notSet || 'Not set')}
-                          {userData?.phone && !userData?.isPhoneVerified && <FiAlertCircle className="text-orange-400" />}
-                        </p>
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <FiLock className="text-xs" /> {t?.locked || "Locked"}
-                        </span>
-                      </div>
-                      {!userData?.phone && (
-                        <p className="text-xs text-gray-500 mt-1">{t?.phoneLockedPermanent || "Phone number cannot be changed once set."}</p>
+                      
+                      {!userData?.isPhoneVerified && mobileVerification.showForm ? (
+                        <div className="space-y-3">
+                          {mobileVerification.step === "verify" && (
+                            <>
+                              <div className="bg-[#1a1c1d] p-4 rounded-lg border border-gray-700">
+                                <p className="text-sm text-gray-300 mb-3 text-center">
+                                  {t?.otpSentTo || "OTP sent to"} +880{personalInfoForm.phone}
+                                </p>
+                                
+                                <div className="flex justify-center mb-4">
+                                  <input
+                                    type="text"
+                                    maxLength="6"
+                                    value={mobileVerification.otp}
+                                    onChange={(e) => {
+                                      const value = e.target.value.replace(/\D/g, '');
+                                      if (value.length <= 6) {
+                                        setMobileVerification(prev => ({ ...prev, otp: value }));
+                                      }
+                                    }}
+                                    className="w-48 text-center bg-[#222] border border-gray-700 rounded px-4 py-3 text-white text-2xl font-mono focus:outline-none focus:border-theme_color"
+                                    placeholder="000000"
+                                    disabled={mobileVerification.isLoading}
+                                  />
+                                </div>
+                                
+                                <div className="flex gap-2 justify-center">
+                                  <button
+                                    onClick={handleVerifyMobileOTP}
+                                    disabled={mobileVerification.isLoading || mobileVerification.otp.length !== 6}
+                                    className="bg-theme_color text-white px-4 py-2 rounded text-sm disabled:opacity-50 flex items-center gap-1"
+                                  >
+                                    {mobileVerification.isLoading ? (
+                                      <span className="flex items-center">
+                                        <svg className="animate-spin h-4 w-4 mr-1" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                        </svg>
+                                        {t?.verifying || "Verifying..."}
+                                      </span>
+                                    ) : (t?.verify || "Verify")}
+                                  </button>
+                                  <button
+                                    onClick={handleResendMobileOTP}
+                                    disabled={mobileVerification.isLoading}
+                                    className="bg-gray-600 text-white px-4 py-2 rounded text-sm flex items-center gap-1"
+                                  >
+                                    <FiRefreshCw className="text-sm" /> {t?.resendOTP || "Resend"}
+                                  </button>
+                                  <button
+                                    onClick={handleCancelMobileVerification}
+                                    className="bg-gray-700 text-white px-4 py-2 rounded text-sm flex items-center gap-1"
+                                  >
+                                    <FiXCircle className="text-sm" /> {t?.cancel || "Cancel"}
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center bg-[#222] border border-gray-700 rounded overflow-hidden flex-1">
+                              <div className="flex items-center px-3 py-2 w-[120px] bg-[#1a1c1d] border-r border-gray-700">
+                                <img 
+                                  src="https://img.b112j.com/bj/h5/assets/v3/images/icon-set/flag-type/BD.png" 
+                                  alt="BD" 
+                                  className="w-5 h-5 rounded-full mr-1"
+                                />
+                                <span className="text-white text-sm">+880</span>
+                              </div>
+                              <input
+                                type="tel"
+                                name="phone"
+                                value={personalInfoForm.phone}
+                                onChange={(e) => {
+                                  const value = e.target.value.replace(/\D/g, '');
+                                  if (value.length <= 10) {
+                                    setPersonalInfoForm(prev => ({ ...prev, phone: value }));
+                                  }
+                                }}
+                                className="flex-1 bg-[#222] px-3 py-2 text-white focus:outline-none"
+                                placeholder="XXXXXXXXXX"
+                                disabled={userData?.isPhoneVerified}
+                              />
+                            </div>
+                            {!userData?.isPhoneVerified && personalInfoForm.phone && personalInfoForm.phone.length === 10 && (
+                              <button
+                                onClick={handleSendMobileOTP}
+                                disabled={mobileVerification.isLoading}
+                                className="bg-theme_color text-white px-4 py-2 rounded text-sm whitespace-nowrap disabled:opacity-50 flex items-center gap-1"
+                              >
+                                {mobileVerification.isLoading ? (
+                                  <span className="flex items-center">
+                                    <svg className="animate-spin h-4 w-4 mr-1" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                    </svg>
+                                    {t?.sending || "Sending..."}
+                                  </span>
+                                ) : (t?.verifyPhone || "Verify Phone")}
+                              </button>
+                            )}
+                          </div>
+                          {userData?.isPhoneVerified && (
+                            <div className="flex items-center justify-between">
+                              <p className="text-white flex items-center gap-2">
+                                +880{userData?.phone?.toString().replace(/^\+880/, '').replace(/^880/, '')}
+                                <span className="text-green-400 text-xs flex items-center gap-1">
+                                  <FiCheck /> {t?.verified || "Verified"}
+                                </span>
+                              </p>
+                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                                <FiLock className="text-xs" /> {t?.locked || "Locked"}
+                              </span>
+                            </div>
+                          )}
+                          {!userData?.isPhoneVerified && personalInfoForm.phone && personalInfoForm.phone.length === 10 && (
+                            <p className="text-xs text-yellow-500">{t?.verifyPhoneToLock || "Phone number will be locked after verification."}</p>
+                          )}
+                          {!userData?.isPhoneVerified && (!personalInfoForm.phone || personalInfoForm.phone.length !== 10) && (
+                            <p className="text-xs text-gray-500">Enter 10-digit phone number (e.g., 1712345678)</p>
+                          )}
+                        </div>
                       )}
                     </div>
 
-                    {/* Email with Separate Update - Can only be set once */}
+                    {/* Email with Separate Update - Can only be set once (Added green check icon for verified) */}
                     <div className="py-4">
                       <div>
                         <div className="flex items-center gap-2 mb-2">
@@ -890,7 +1155,14 @@ const Profile = () => {
                         {!emailUpdateForm.showForm && !isEmailUpdated ? (
                           <>
                             <div className="flex items-center justify-between">
-                              <p className="text-white mb-3">{userData?.email || (t?.notSet || 'Not set')}</p>
+                              <p className="text-white mb-3 flex items-center gap-2">
+                                {userData?.email || (t?.notSet || 'Not set')}
+                                {userData?.email && userData?.isEmailVerified && (
+                                  <span className="text-green-400 text-xs flex items-center gap-1">
+                                    <FiCheck /> {t?.verified || "Verified"}
+                                  </span>
+                                )}
+                              </p>
                             </div>
                             <button 
                               onClick={() => setEmailUpdateForm(prev => ({ ...prev, showForm: true, newEmail: userData?.email || '' }))}
@@ -898,7 +1170,7 @@ const Profile = () => {
                             >
                               <FiEdit className="text-sm" /> {t?.addEmail || "Add Email"}
                             </button>
-                            <p className="text-xs text-yellow-500 mt-1">{t?.emailOnceWarning || "⚠️ Email can only be set once. Please ensure it's correct."}</p>
+                            <p className="text-xs text-yellow-500 mt-1">{t?.emailOnceWarning || "Email can only be set once. Please ensure it's correct."}</p>
                           </>
                         ) : !isEmailUpdated && emailUpdateForm.showForm ? (
                           <div className="mt-2 space-y-3">
@@ -952,7 +1224,13 @@ const Profile = () => {
                             <div className="flex items-center justify-between">
                               <p className="text-white flex items-center gap-2">
                                 {userData?.email || (t?.notSet || 'Not set')}
-                                {userData?.email && !userData?.isEmailVerified && <FiAlertCircle className="text-orange-400" />}
+                                {userData?.email && userData?.isEmailVerified ? (
+                                  <span className="text-green-400 text-xs flex items-center gap-1">
+                                    <FiCheck /> {t?.verified || "Verified"}
+                                  </span>
+                                ) : userData?.email && !userData?.isEmailVerified && (
+                                  <FiAlertCircle className="text-orange-400" />
+                                )}
                               </p>
                               <span className="text-xs text-gray-500 flex items-center gap-1">
                                 <FiLock className="text-xs" /> {t?.locked || "Locked"}
@@ -1109,14 +1387,16 @@ const Profile = () => {
                           </div>
                         )}
                         {verificationStatus.email === "verified" && (
-                          <p className="text-green-400 text-sm">{t?.emailVerified || "Your email has been verified!"}</p>
+                          <p className="text-green-400 text-sm flex items-center gap-1">
+                            <FiCheck /> {t?.emailVerified || "Your email has been verified!"}
+                          </p>
                         )}
                         {!userData?.email && (
                           <p className="text-orange-400 text-sm">{t?.addEmailFirst || "Please add your email address in Personal Info first."}</p>
                         )}
                       </div>
 
-                      {/* Phone Verification */}
+                      {/* Phone Verification - Updated */}
                       <div className="bg-[#222] rounded-lg p-4 border border-gray-700">
                         <div className="flex justify-between items-center mb-3">
                           <div className="flex items-center gap-3">
@@ -1132,7 +1412,7 @@ const Profile = () => {
                           <p className="text-orange-400 text-sm mb-2">{t?.addPhoneFirst || "Please add your phone number in Personal Info first."}</p>
                         ) : verificationStatus.phone === "not_started" ? (
                           <button 
-                            onClick={handlePhoneVerificationRequest}
+                            onClick={() => setMobileVerification(prev => ({ ...prev, showForm: true }))}
                             className="bg-theme_color text-white px-4 py-2 rounded text-sm hover:bg-theme_color/80"
                           >
                             {t?.verifyPhone || "Verify Phone"}
@@ -1148,7 +1428,9 @@ const Profile = () => {
                             </button>
                           </div>
                         ) : (
-                          <p className="text-green-400 text-sm">{t?.phoneVerified || "Your phone number has been verified!"}</p>
+                          <p className="text-green-400 text-sm flex items-center gap-1">
+                            <FiCheck /> {t?.phoneVerified || "Your phone number has been verified!"}
+                          </p>
                         )}
                       </div>
                     </div>
