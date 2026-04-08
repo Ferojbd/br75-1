@@ -67,7 +67,7 @@ const Referprogramme = () => {
     // Try to use the Web Share API first
     if (navigator.share) {
       navigator.share({
-        title: 'Join me on Bajiman!',
+        title: 'Join me on BaajiWala!',
         text: `Use my referral code ${userData.referralCode} to sign up and get bonus!`,
         url: referralLink,
       })

@@ -37,9 +37,9 @@ app.use(cors({
       "https://bajiman.com",
       "https://m-affiliate.bajiman.com",
       "https://affiliate.bajiman.com",
-      "https://bir75.com",
-      "https://admin.bir75.com",
-      "https://affiliate.bir75.com"
+      "https://baajiwala.pro",
+      "https://admin.baajiwala.pro",
+      "https://affiliate.baajiwala.pro"
     ];
     
     // Allow requests with no origin (like mobile apps or curl)
