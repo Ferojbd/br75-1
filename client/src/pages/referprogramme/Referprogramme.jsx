@@ -62,7 +62,7 @@ const Referprogramme = () => {
       return;
     }
 
-    const referralLink = `https://bajiman.com/register?ref=${userData.referralCode}`;
+    const referralLink = `https://baajiwala.pro/register?ref=${userData.referralCode}`;
     
     // Try to use the Web Share API first
     if (navigator.share) {

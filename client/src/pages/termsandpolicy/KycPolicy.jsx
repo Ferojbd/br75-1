@@ -81,7 +81,7 @@ const KycPolicy = () => {
             <div className="space-y-6 text-sm text-gray-200">
               <section className="space-y-4">
                 <p>
-                  When a user makes an aggregate lifetime total of deposits exceeding EUR 2000 or requests a withdrawal of any amount on the https://www.bajiman.com Platform, then it is compulsory for them to perform a full KYC process.
+                  When a user makes an aggregate lifetime total of deposits exceeding EUR 2000 or requests a withdrawal of any amount on the https://www.baajiwala.pro Platform, then it is compulsory for them to perform a full KYC process.
                 </p>
                 <p>During this process, the user will have to input some basic details about themselves and then upload</p>
                 <ol className="list-decimal ml-8 space-y-1">

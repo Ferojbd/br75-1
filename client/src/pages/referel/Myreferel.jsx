@@ -65,7 +65,7 @@ const Myreferel = () => {
   };
 
   const copyLinkToClipboard = () => {
-    const link = `https://bajiman.com/register?ref=${userData?.referralCode || ""}`;
+    const link = `https://baajiwala.pro/register?ref=${userData?.referralCode || ""}`;
     navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -75,7 +75,7 @@ const Myreferel = () => {
     const shareData = {
       title: t?.joinMe || 'Join me!',
       text: t?.useMyReferralCode || 'Use my referral code to sign up',
-      url: `https://bajiman.com/register?ref=${userData?.referralCode || ""}`
+      url: `https://baajiwala.pro/register?ref=${userData?.referralCode || ""}`
     };
     
     if (navigator.share) {
@@ -177,7 +177,7 @@ const Myreferel = () => {
                   {/* QR */}
                   <div className="w-[200px] sm:w-[200px] sm:h-[200px] bg-white p-2 border border-gray-200 flex items-center justify-center">
                     <QRCode 
-                      value={`https://bajiman.com/register?ref=${userData?.referralCode || ""}`} 
+                      value={`https://baajiwala.pro/register?ref=${userData?.referralCode || ""}`} 
                       size={180}
                       className="w-full h-full"
                     />

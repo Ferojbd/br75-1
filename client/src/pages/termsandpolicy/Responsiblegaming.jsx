@@ -82,7 +82,7 @@ const Responsiblegaming = () => {
                 <p className="font-bold">Gambling With Responsibility</p>
                 <p className="text-[11px] text-gray-400">Last updated: 18 September 2023</p>
                 <p className="italic">Please read this information carefully for your own benefit.</p>
-                <p>https://www.bajiman.com is operated by Aurora Holdings N.V., having its office at Abraham de Veerstraat 9, Curacao. Company Registration number 157258.</p>
+                <p>https://www.baajiwala.pro is operated by Aurora Holdings N.V., having its office at Abraham de Veerstraat 9, Curacao. Company Registration number 157258.</p>
               </section>
 
               <section className="space-y-2">
@@ -98,7 +98,7 @@ const Responsiblegaming = () => {
                   <li><span className="font-bold">Account</span> means a unique account created for You to access our Service or parts of our Service.</li>
                   <li><span className="font-bold">Company</span> (referred to as either "the Company", "We", "Us" or "Our" in this Agreement) refers to Aurora Holdings N.V.</li>
                   <li><span className="font-bold">Service</span> refers to the Website.</li>
-                  <li><span className="font-bold">Website</span> refers to https://www.bajiman.com.</li>
+                  <li><span className="font-bold">Website</span> refers to https://www.baajiwala.pro.</li>
                   <li><span className="font-bold">You</span> mean the individual accessing or using the Service, or the company, or other legal entity on behalf of which such individual is accessing or using the Service, as applicable.</li>
                 </ul>
               </section>
@@ -122,7 +122,7 @@ const Responsiblegaming = () => {
               </section>
 
               <section className="space-y-3">
-                <h2 className="text-[14px] font-bold">Helpful hints for responsible gambling at https://www.bajiman.com</h2>
+                <h2 className="text-[14px] font-bold">Helpful hints for responsible gambling at https://www.baajiwala.pro</h2>
                 <p>We recommend you think about the following hints, before gambling in order to insure gambling stays fun for You and without any negative side effects:</p>
                 <ul className="list-disc ml-8 space-y-3">
                   <li>
